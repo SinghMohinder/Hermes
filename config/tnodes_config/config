@@ -1,0 +1,13 @@
+[192.168.1.251]
+userName=msingh
+authKeyConfigMan=config/configman_key
+authKeyLogger=config/logger_key
+authKeyMonitor=config/monitor_key
+authKeyReporter=config/reporter_key
+
+[10.0.0.251]
+userName=msingh
+authKeyConfigMan=config/configman_key
+authKeyLogger=config/logger_key
+authKeyMonitor=config/monitor_key
+authKeyReporter=config/reporter_key

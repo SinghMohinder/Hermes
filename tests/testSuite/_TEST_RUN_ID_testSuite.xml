@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<testSuite>
+    <testSuite-Name>test0</testSuite-Name>
+    <testSuite-Version>1.0</testSuite-Version>
+    <testSuite-tag>pre-prod</testSuite-tag>
+    <testSuite-Type>Sanity</testSuite-Type>
+    <testSuite-testBed>TB001</testSuite-testBed>
+    <testSuite-Developer>realm01user01@gmail.com</testSuite-Developer>
+    <testSuite-People>realm01user01@gmail.com,msingh.mx4@gmail.com</testSuite-People>
+    <testSuite-Notify>realm01user01@gmail.com,msingh.mx4@gmail.com</testSuite-Notify>
+    <testSuite-healthCheck-Hermes>False</testSuite-healthCheck-Hermes>
+    <testSuite-healthCheck-testBed>False</testSuite-healthCheck-testBed>
+    <testCases>
+        <testCase-01>testCase-01.xml</testCase-01>
+        <testCase-02>testCase-02.xml</testCase-02>
+        <testCase-03>testCase-03.xml</testCase-03>
+        <testCase-04>testCase-04.xml</testCase-04>
+        <testCase-05>testCase-05.xml</testCase-05>
+        <testCase-06>testCase-06.xml</testCase-06>
+        <testCase-07>testCase-07.xml</testCase-07>
+        <testCase-08>testCase-08.xml</testCase-08>
+        <testCase-09>testCase-09.xml</testCase-09>
+        <testCase-10>testCase-10.xml</testCase-10>
+    </testCases>
+</testSuite>
