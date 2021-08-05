@@ -18,7 +18,7 @@ class testDriver(hermes):
 
 
 
-    def __init__(self, configFile, testRunId, name, TestCaseQueueDict, testInputQueueDict, testOutputQueueDict, testEvent, sigInit, sigCup):
+    def __init__(self, configFile, testRunId, name, TestCaseQueueDict, testInputQueueDict, testOutputQueueDict, testEvent, sigInit, sigCup, logLevel, pidsFile):
         '''
         Initializes Driver class, i.e. Core Engine of Hermes
         '''
@@ -32,12 +32,14 @@ class testDriver(hermes):
         self.testEvent = testEvent
         self.sigInit = sigInit
         self.sigCup = sigCup
+        self.logLevel = logLevel
+        self.pidsFile = pidsFile
 
         with open(self.configFile) as _HERMES_CONFIG:
             configP = ConfigParser.ConfigParser()
             configP.readfp(_HERMES_CONFIG)
             _LOG_DIR = configP.get('HERMES', 'LOG_DIR')
-            _LOG_LEVEL = configP.get('HERMES', 'LOG_LEVEL')
+            _LOG_LEVEL = self.logLevel
             _LOG_FORMAT = '%(levelname)s - %(asctime)s.%(msecs)03d - %(module)s - %(name)s - %(funcName)s - %(message)s'
         # Extensive logging info when logging level is 'DEBUG'
         if (_LOG_LEVEL == 'DEBUG'):
@@ -48,10 +50,7 @@ class testDriver(hermes):
             self._hLogger = logging.getLogger(__name__)
             self._hLogger.info("Initialing Logger")
             self._hLogger.setLevel(_LOG_LEVEL)
-            hLogSH1 = logging.StreamHandler(sys.stdout)
             hLogFmtr = logging.Formatter(_LOG_FORMAT, datefmt='%d/%m/%Y_%I:%M:%S')
-            hLogSH1.setFormatter(hLogFmtr)
-            self._hLogger.addHandler(hLogSH1)
         except Exception as Err:
             self._hLogger.critical("Logger Initialization Failed : %s ", str(Err))
             self._hLogger.exception(sys.exc_info())
@@ -216,6 +215,16 @@ class testDriver(hermes):
 
         :return:
         '''
+        # Write pid to hermespids
+        try:
+            with open(self.pidsFile, "a") as pidsFH:
+                pidsFH.write(str(self.pid) + '\n')
+        except Exception as Err:
+            self._hLogger.critical("Failed to write pid for testDriver : {}".format(Err))
+        else:
+            self._hLogger.info("pids written for testDriver")
+
+
         import time
         while True:
             if self.checkDriverUp():
@@ -225,6 +234,6 @@ class testDriver(hermes):
                 break
             else:
                 time.sleep(1)
-                continue
+                continue 
 
         return

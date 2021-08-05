@@ -15,7 +15,7 @@ class hermesWorkerThread(threading.Thread):
 
     __version__ = 0.1
 
-    def __init__(self, logDir, configP, testRunId, testCaseId, testChunk, outputQ):
+    def __init__(self, logDir, configP, testRunId, testCaseId, testChunk, outputQ, logLevel):
         '''
         Initializes worker Thread and its relevant logging Instance
         Each worker thread will have relevant log and log file will be in logs/testRunId/workerThreadName_TIMESTAMP.log
@@ -28,9 +28,10 @@ class hermesWorkerThread(threading.Thread):
         self.testChunk = testChunk
         self.outputQ = outputQ
         self.outputChunk = {}
+        self.logLevel = logLevel
 
         _LOG_DIR = configP.get('HERMES', 'LOG_DIR')
-        _LOG_LEVEL = configP.get('HERMES', 'LOG_LEVEL')
+        _LOG_LEVEL = self.logLevel
         _LOG_FORMAT = '%(levelname)s - %(asctime)s.%(msecs)03d - %(module)s - %(name)s - %(funcName)s - %(message)s'
 
         if (_LOG_LEVEL == 'DEBUG'):
@@ -43,10 +44,7 @@ class hermesWorkerThread(threading.Thread):
             self._hLogger = logging.getLogger(self.loggerName)
             self._hLogger.info("Initialing Logger")
             self._hLogger.setLevel(_LOG_LEVEL)
-            hLogSH1 = logging.StreamHandler(sys.stdout)
             hLogFmtr = logging.Formatter(_LOG_FORMAT, datefmt='%d/%m/%Y_%I:%M:%S')
-            hLogSH1.setFormatter(hLogFmtr)
-            self._hLogger.addHandler(hLogSH1)
         except Exception as Err:
             self._hLogger.critical("Logger Initialization Failed : %s ", str(Err))
             self._hLogger.exception(sys.exc_info())

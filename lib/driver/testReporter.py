@@ -14,7 +14,7 @@ class testReporter(hermes):
 
     __version__ = 0.9
 
-    def __init__(self, configFile, testRunId, name, testInputQueueDict, testOutputQueueDict, testEvent, sigInit, sigCup, sigExtCM):
+    def __init__(self, configFile, testRunId, name, testInputQueueDict, testOutputQueueDict, testEvent, sigInit, sigCup, sigExtCM, logLevel, pidsFile):
         '''
         Initializes Driver class, i.e. Core Engine of Hermes
         '''
@@ -28,12 +28,14 @@ class testReporter(hermes):
         self.sigInit = sigInit
         self.sigCup = sigCup
         self.sigExtCM = sigExtCM
+        self.logLevel = logLevel
+        self.pidsFile = pidsFile
 
         with open(self.configFile) as _HERMES_CONFIG:
             configP = ConfigParser.ConfigParser()
             configP.readfp(_HERMES_CONFIG)
             _LOG_DIR = configP.get('HERMES', 'LOG_DIR')
-            _LOG_LEVEL = configP.get('HERMES', 'LOG_LEVEL')
+            _LOG_LEVEL = self.logLevel
             _LOG_FORMAT = '%(levelname)s - %(asctime)s.%(msecs)03d - %(module)s - %(name)s - %(funcName)s - %(message)s'
         # Extensive logging info when logging level is 'DEBUG'
         if (_LOG_LEVEL == 'DEBUG'):
@@ -45,10 +47,7 @@ class testReporter(hermes):
             self._hLogger = logging.getLogger(__name__)
             self._hLogger.info("Initialing Logger")
             self._hLogger.setLevel(_LOG_LEVEL)
-            hLogSH1 = logging.StreamHandler(sys.stdout)
             hLogFmtr = logging.Formatter(_LOG_FORMAT, datefmt='%d/%m/%Y_%I:%M:%S')
-            hLogSH1.setFormatter(hLogFmtr)
-            self._hLogger.addHandler(hLogSH1)
         except Exception as Err:
             self._hLogger.critical("Logger Initialization Failed : %s ", str(Err))
             self._hLogger.exception(sys.exc_info())
@@ -175,6 +174,16 @@ class testReporter(hermes):
         :return:
         '''
         super(testReporter, self).run()
+
+        # Write pid to hermespids
+        try:
+            with open(self.pidsFile, "a") as pidsFH:
+                pidsFH.write(str(self.pid) + '\n')
+        except Exception as Err:
+            self._hLogger.critical("Failed to write pid for testReporter : {}".format(Err))
+        else:
+            self._hLogger.info("pids written for testReporter")
+
         # Notify testDriver, once connected to Proxy process
         self.connectProxy()
         self.sigInit["Reporter"].set()

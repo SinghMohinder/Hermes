@@ -1,0 +1,235 @@
+#! /usr/bin/python2.7
+
+import argparse
+import subprocess
+import sys
+import time
+import os, signal
+
+from lib.hermes.hermesStates import _HERMES_EXECUTION_STATUS
+
+# $./launcher -c {start|stop|suspend} -m {Driver | Reporter | ConfigMan | Monitor | Logger]
+# $./launcher -c {start|stop|suspend} -m Hermes
+
+argLauncher = {}
+_HERMES_PID_FILE = 'tmp/pids'
+var = "\n\n \
+	    \t __    __  \n \
+	    \t|  |  |  | \n \
+        \t|  |__|  | \n \
+        \t|        | \n \
+        \t|   __   |   __     .  .  _  _     __    _  _     \n \
+        \t|  |  |  | //__\\\  ||//  | \/ |  //__\\\ ||  ||    \n \
+        \t|  |  |  |||    _  | |   | || | ||    _   \\\       \n \
+        \t|__|  |__| \\\__//  |_|   |_||_|  \\\__// ||__||    \n \
+        \t                                               version 0.1 \n"
+
+print var
+
+def checkPoint(flag, maxRetries):
+    retryCount = 0
+    while True:
+        if flag:
+            time.sleep(1)
+            sys.stdout.write("..........SUCCESS")
+            sys.stdout.flush()
+            break
+        else:
+            if retryCount < maxRetries:
+                time.sleep(0.1)
+                sys.stdout.write('.')
+                sys.stdout.flush()
+                retryCount += 1
+                continue
+            sys.stdout.write('TimeOut, Exiting!!\n\n')
+            sys.stdout.flush()
+            sys.exit(1)
+
+# Remove existing pids and create a new File
+
+
+argP = argparse.ArgumentParser(parents=[], description="Hermes launcher")
+
+argP.add_argument('-c', action='store', dest='hermesCommand',
+                  help='command to launch/suspend/stop Hermes/HermesNode -> start | stop | suspend ',
+                  default=False)
+
+argP.add_argument('-m', action='store', dest='hermesMode',
+                  help='Specify mode of HermesNode i.e. Hermes | Driver | ConfigMan | Logger | Reporter | Monitor',
+                  default=False)
+
+try:
+    launcherResult = argP.parse_args()
+except Exception as Err:
+    print("Exception while parsing arguments : {}".format(Err))
+    sys.exit(1)
+else:
+    print("Arguments parsed > {}".format(launcherResult))
+
+if (launcherResult.hermesMode in ['Driver', 'ConfigMan', 'Logger', 'Reporter', 'Monitor']):
+    argLauncher['hermesMode'] = str(launcherResult.hermesMode).strip()
+
+if (launcherResult.hermesCommand in ['start', 'stop', 'suspend']):
+    argLauncher['hermesCommand'] = str(launcherResult.hermesCommand).strip()
+
+# Launch hermes with command line args
+if argLauncher['hermesCommand'] == 'start':
+    startCommand = ["python2.7", "hermes.py", "-m", argLauncher['hermesMode'], "-d", "True"]
+    try:
+        os.remove(_HERMES_PID_FILE)
+        with open(_HERMES_PID_FILE, "a") as pidsFH:
+            pass
+    except Exception as Err:
+        print("{}\npids creation Failed , Exiting !".format(Err))
+        sys.exit(1)
+    else:
+        print("pids File created\n")
+
+    try:
+        proc = subprocess.Popen(startCommand, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except Exception as Err:
+        print ("launcher Failed with Error : {}".format(str(Err)))
+        sys.exit(0)
+    else:
+        if argLauncher['hermesMode'] == 'Driver':
+            print ("Starting ....: {}\n".format('\033[1m' + argLauncher['hermesMode'] + '\033[0m'))
+            sys.stdout.write("LOGGER")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['LOGGER'], 100)
+            sys.stdout.write("\nFETCH_SYSINFO")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['FETCH_SYSINFO'], 100)
+            sys.stdout.write("\nREAD_TESTSUITE")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['READ_TESTSUITE'], 100)
+            sys.stdout.write("\nCONTAINERS_INIT")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['CONTAINERS_INIT'], 100)
+            sys.stdout.write("\nTESTSUITE_CONSUMED")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['TESTSUITE_CONSUMED'], 100)
+            sys.stdout.write("\nPROXY_CONFIGMAN_INIT")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['PROXY_CONFIGMAN_INIT'], 100)
+            sys.stdout.write("\nPROXY_LOGGER_INIT")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['PROXY_LOGGER_INIT'], 100)
+            sys.stdout.write("\nPROXY_REPORTER_INIT")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['PROXY_REPORTER_INIT'], 100)
+            sys.stdout.write("\nPROXY_MONITOR_INIT")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['PROXY_MONITOR_INIT'], 100)
+            sys.stdout.write("\nTEST_CONFIGMAN_INIT")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['TEST_CONFIGMAN_INIT'], 100)
+            sys.stdout.write("\nTEST_MONITOR_INIT")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['TEST_MONITOR_INIT'], 100)
+            sys.stdout.write("\nTEST_REPORTER_INIT")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['TEST_REPORTER_INIT'], 100)
+            sys.stdout.write("\nDRIVER_INIT")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['DRIVER_INIT'], 100)
+            DriverPID = format(proc.pid) + '\n'
+            print ("\nHermes launched with process ID : {}".format(DriverPID))
+            with open(_HERMES_PID_FILE, "a") as tmpFH:
+                tmpFH.write(DriverPID)
+        elif argLauncher['hermesMode'] == 'ConfigMan':
+            print ("Starting ....: {}\n".format('\033[1m' + argLauncher['hermesMode'] + '\033[0m'))
+            sys.stdout.write("LOGGER")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['LOGGER'], 100)
+            sys.stdout.write("\nFETCH_SYSINFO")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['FETCH_SYSINFO'], 100)
+            sys.stdout.write("\nCONFIGMAN_INIT")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['CONFIGMAN_INIT'], 100)
+            sys.stdout.write("\nCONFIGMAN_PROXY_INIT")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['CONFIGMAN_PROXY_INIT'], 100)
+            ConfigManPID = format(proc.pid) + '\n'
+            print ("\nHermes launched with process ID : {}".format(ConfigManPID))
+            with open(_HERMES_PID_FILE, "a") as tmpFH:
+                tmpFH.write(ConfigManPID)
+        elif argLauncher['hermesMode'] == 'Logger':
+            print ("Starting ....: {}\n".format('\033[1m' + argLauncher['hermesMode'] + '\033[0m'))
+            sys.stdout.write("LOGGER")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['LOGGER'], 100)
+            sys.stdout.write("\nFETCH_SYSINFO")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['FETCH_SYSINFO'], 100)
+            sys.stdout.write("\nLOGGER_INIT")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['LOGGER_INIT'], 100)
+            sys.stdout.write("\nLOGGER_PROXY_INIT")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['LOGGER_PROXY_INIT'], 100)
+            LoggerPID = format(proc.pid) + '\n'
+            print ("\nHermes launched with process ID : {}".format(LoggerPID))
+            with open(_HERMES_PID_FILE, "a") as tmpFH:
+                tmpFH.write(LoggerPID)
+        elif argLauncher['hermesMode'] == 'Reporter':
+            print ("Starting ....: {}\n".format('\033[1m' + argLauncher['hermesMode'] + '\033[0m'))
+            sys.stdout.write("LOGGER")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['LOGGER'], 100)
+            sys.stdout.write("\nFETCH_SYSINFO")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['FETCH_SYSINFO'], 100)
+            sys.stdout.write("\nREPORTER_INIT")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['REPORTER_INIT'], 100)
+            sys.stdout.write("\nREPORTER_PROXY_INIT")
+            sys.stdout.flush()
+            ReporterPID = format(proc.pid) + '\n'
+            print ("\nHermes launched with process ID : {}".format(ReporterPID))
+            with open(_HERMES_PID_FILE, "a") as tmpFH:
+                tmpFH.write(ReporterPID)
+        elif argLauncher['hermesMode'] == 'Monitor':
+            print ("Starting ....: {}\n".format('\033[1m' + argLauncher['hermesMode'] + '\033[0m'))
+            sys.stdout.write("LOGGER")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['LOGGER'], 100)
+            sys.stdout.write("\nFETCH_SYSINFO")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['FETCH_SYSINFO'], 100)
+            sys.stdout.write("\nMONITOR_INIT")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['MONITOR_INIT'], 100)
+            sys.stdout.write("\nMONITOR_PROXY_INIT")
+            sys.stdout.flush()
+            checkPoint(_HERMES_EXECUTION_STATUS['MONITOR_PROXY_INIT'], 100)
+            MonitorPID = format(proc.pid) + '\n'
+            print ("\nHermes launched with process ID : {}".format(MonitorPID))
+            with open(_HERMES_PID_FILE, "a") as tmpFH:
+                tmpFH.write(MonitorPID)
+        else:
+            sys.stdout.write("CRITICAL ERROR : incorrect option with -m {}")
+
+elif argLauncher['hermesCommand'] == 'stop':
+    # fetch pids file and terminate processes
+    _PIDS = []
+    try:
+        with open(_HERMES_PID_FILE) as pFH:
+            _PIDS = [pid.strip('\n') for pid in pFH.readlines()]
+    except Exception as Err:
+        print("Failed to read pids : {}".format(Err))
+    else:
+        print("Terminating pids : {}".format(_PIDS))
+
+    try:
+        for pid in _PIDS:
+            if pid:
+                os.kill(int(pid), signal.SIGTERM)
+    except Exception as Err:
+        print("Unable to terminate pids : {}".format(Err))
+    else:
+        print("PIDS terminated")
+else:
+    print("Options to be added soon, Exiting\n")
+
+

@@ -5,61 +5,57 @@ import json
 from lib.misc.utility import utility
 import ConfigParser
 import sys
+import os
 from logging.handlers import RotatingFileHandler
 from lib.system.info import sysinfo
 import multiprocessing
 from lib.tests.testCase import testCase
 from lib.cli import argParser
-
+from lib.hermes.hermesStates import _HERMES_EXECUTION_STATUS
 
 hermesArgs = argParser.defineHermesMode()
 print hermesArgs
 
 _HERMES_CONFIG_FILE = 'config/hermes_config/config'
-
 _HERMES_MODE = hermesArgs['hermesMode']
-_HERMES_LOG_LEVEL = eval(hermesArgs['debugMode'])
+_HERMES_DEBUG_LOG_LEVEL = eval(hermesArgs['debugMode'])
 
-print ("hermesMode --> {} - {}, Log Level - {}".format(_HERMES_MODE, type(_HERMES_MODE), _HERMES_LOG_LEVEL ))
+print ("hermesMode --> {} - {}, Log Level - {}".format(_HERMES_MODE, type(_HERMES_MODE), _HERMES_DEBUG_LOG_LEVEL ))
 
 with open(_HERMES_CONFIG_FILE) as _HERMES_CONFIG:
     configP = ConfigParser.ConfigParser()
     configP.readfp(_HERMES_CONFIG)
     _LOG_LEVEL = configP.get('LOGS','LOG_LEVEL')    
     _LOG_DIR = configP.get('LOGS','LOG_DIR')
+    _HERMES_PIDS_FILE = configP.get('STATE', 'PIDS_FILE')
     _LOG_FORMAT = '%(levelname)s - %(asctime)s.%(msecs)03d - %(module)s - %(name)s - %(funcName)s - %(message)s'
 
 # set logging level per command line input parameters 
-if _HERMES_LOG_LEVEL:
+if _HERMES_DEBUG_LOG_LEVEL:
     _LOG_LEVEL = 'DEBUG'
     print ("Setting Log Level to DEBUG")
- 
+
 if (_LOG_LEVEL == 'DEBUG'):
     _LOG_FORMAT += str('::< %(lineno)d-%(process)d-%(processName)s-%(relativeCreated)d-%(thread)d-%(threadName)s >::')
 
 # Intialize Logger
 try:
-    #logging.info("Initialing Logger")
     _hLogger = logging.getLogger(__name__)
-    _hLogger.info("Initialing Logger")
     _hLogger.setLevel(_LOG_LEVEL)
-    hLogSH1 = logging.StreamHandler(sys.stdout)
     hLogFmtr = logging.Formatter(_LOG_FORMAT, datefmt='%d/%m/%Y_%I:%M:%S')
-    hLogSH1.setFormatter(hLogFmtr)
-    _hLogger.addHandler(hLogSH1)
 except Exception as Err:
-    _hLogger.critical("Logger Initialization Failed : %s ",str(Err))
-    _hLogger.exception(sys.exc_info())
+    print("Logger Initialization Failed : {}".format(str(Err)))
+    print("Exception :{}".format(sys.exc_info()))
     sys.exit(0)
 else:
-    _hLogger.info("hLogger initialized")
-
+    print("Logger Initialized, with Handlers : {}".format(_hLogger.handlers))
 
 # Create a unique test run Id
 hUtility = utility(_hLogger)
 _TEST_RUN_ID = hUtility.generateRandomString(4,4,False,'mix')
 _hLogger.info("TestRun ID : %s ",str(_TEST_RUN_ID))
 _hLogFile = _LOG_DIR + '/hermes_'+ str(datetime.datetime.now().strftime('%d%m%y_%H%M%S_')) + _TEST_RUN_ID + '.log'
+
 
 # Create a rotating log file handle 
 try:
@@ -72,6 +68,12 @@ except Exception as Err:
     sys.exit(0)
 else:
     _hLogger.info("hLogger added with FileHandler")
+
+_hLogger.debug("Execution State 1: {} ".format(_HERMES_EXECUTION_STATUS['LOGGER']))
+
+_HERMES_EXECUTION_STATUS["LOGGER"] = True
+
+_hLogger.debug("Execution State 1: {} ".format(_HERMES_EXECUTION_STATUS['LOGGER']))
 
 # Fetch system info
 sysInfo = sysinfo(_hLogger)
@@ -96,6 +98,7 @@ except Exception as Err:
 else:
     _hLogger.info("sysinfo fetch completed")
 
+_HERMES_EXECUTION_STATUS["FETCH_SYSINFO"] = True
 
 # Initilize per _HERMES_MODE
 if (_HERMES_MODE == 'Driver'):
@@ -110,6 +113,8 @@ if (_HERMES_MODE == 'Driver'):
 
     # Fetched and read TestSuite xml file only
     hUtility.readTestSuite(_testSuite["testSuite"], Notify=True)
+
+    _HERMES_EXECUTION_STATUS["READ_TESTSUITE"] = True
 
     # Define respective Queues and signalling primitives for Driver [ its gamut of multiple processes ]
     testCaseInputDelta = {
@@ -242,6 +247,7 @@ if (_HERMES_MODE == 'Driver'):
     testCaseOutputDelta['proxyMonitor'] = multiprocessing.Queue()
     testCaseOutputDeltaNotif['proxyMonitor'] = multiprocessing.Event()
 
+    _HERMES_EXECUTION_STATUS["CONTAINERS_INIT"] = True
 
     # In memory upload of test-Cases with TestCaseInputQueue
     if TestCaseQueueDict['TestCaseInputQueue'].empty():
@@ -268,6 +274,8 @@ if (_HERMES_MODE == 'Driver'):
     # Poison pill approach with TestCaseInputQueue
     TestCaseQueueDict['TestCaseInputQueue'].put(None)
 
+    _HERMES_EXECUTION_STATUS["TESTSUITE_CONSUMED"] = True
+
     # initialize Proxy Processes with Driver each for relevant component i.e. > ConfigMan, Logger, Reporter, Monitor
     _proxy_CM_Auth = configP.get('HERMES', 'AUTHKEY')
 
@@ -279,15 +287,24 @@ if (_HERMES_MODE == 'Driver'):
         proxyConfigMan.register('opQ', callable=lambda : testCaseOutputDelta['proxyConfigMan'])
         proxyConfigMan.register('ipQNotif', callable=lambda : testCaseInputDeltaNotif['proxyConfigMan'])
         proxyConfigMan.register('opQNotif', callable=lambda : testCaseOutputDeltaNotif['proxyConfigMan'])
-        #_hLogger.info("Starting proxyConfigMan : {} / {}".format(_proxy_CM_Port, _proxy_CM_Auth))
         _proxy_ConfigMan = proxyConfigMan(address=('', int(configP.get('CONFIGMAN_PROXY', 'PORT'))), authkey=str(_proxy_CM_Auth))
         _proxy_ConfigMan.start()
     except Exception as Err:
         _hLogger.critical("Failed to Start proxyConfigMan : %s ", str(Err))
         _hLogger.exception(sys.exc_info())
     else:
-        _hLogger.info("proxyConfigMan Start : Successful")
-        _hLogger.debug("proxyConfigMan -- dict -- {}".format(proxyConfigMan.__dict__))
+        proxyConfigManPID = str(_proxy_ConfigMan._process.ident) + '\n'
+        _hLogger.info("proxyConfigMan Start : Successful, with PID : {}".format(proxyConfigManPID))
+
+    try:
+        with open(_HERMES_PIDS_FILE, "a") as pidsFH:
+            pidsFH.write(proxyConfigManPID)
+    except Exception as Err:
+        _hLogger.critical("Failed to write proxyConfigMan PID : {}".format(Err))
+    else:
+        _hLogger.info("proxyConfigMan PID recorded")
+
+    _HERMES_EXECUTION_STATUS["PROXY_CONFIGMAN_INIT"] = True
 
 
     from lib.driver.proxyLogger import proxyLogger
@@ -297,14 +314,25 @@ if (_HERMES_MODE == 'Driver'):
         proxyLogger.register('opQ', callable=lambda : testCaseOutputDelta['proxyLogger'])
         proxyLogger.register('ipQNotif', callable=lambda : testCaseInputDeltaNotif['proxyLogger'])
         proxyLogger.register('opQNotif', callable=lambda : testCaseOutputDeltaNotif['proxyLogger'])
-        #_hLogger.info("Starting proxyLogger : {} / {}".format(_proxy_CM_Port, _proxy_CM_Auth))
         _proxy_Logger = proxyLogger(address=('', int(configP.get('LOGGER_PROXY', 'PORT'))), authkey=str(_proxy_CM_Auth))
         _proxy_Logger.start()
     except Exception as Err:
         _hLogger.critical("Failed to Start proxyLogger : %s ", str(Err))
         _hLogger.exception(sys.exc_info())
     else:
-        _hLogger.info("proxyLogger Start : Successful")
+        proxyLoggerPID = str(_proxy_Logger._process.ident) + '\n'
+        _hLogger.info("proxyLogger Start : Successful, with PID : {}".format(proxyLoggerPID))
+
+    try:
+        with open(_HERMES_PIDS_FILE, "a") as pidsFH:
+            pidsFH.write(proxyLoggerPID)
+    except Exception as Err:
+        _hLogger.critical("Failed to write proxyLogger PID : {}".format(Err))
+    else:
+        _hLogger.info("proxyLogger PID recorded")
+
+
+    _HERMES_EXECUTION_STATUS["PROXY_LOGGER_INIT"] = True
 
     from lib.driver.proxyReporter import proxyReporter
     try:
@@ -313,15 +341,25 @@ if (_HERMES_MODE == 'Driver'):
         proxyReporter.register('opQ', callable=lambda : testCaseOutputDelta['proxyReporter'])
         proxyReporter.register('ipQNotif', callable=lambda : testCaseInputDeltaNotif['proxyReporter'])
         proxyReporter.register('opQNotif', callable=lambda : testCaseOutputDeltaNotif['proxyReporter'])
-        #_hLogger.info("Starting proxyReporter : {} / {}".format(_proxy_CM_Port, _proxy_CM_Auth))
         _proxy_Reporter = proxyReporter(address=('', int(configP.get('REPORTER_PROXY', 'PORT'))), authkey=str(_proxy_CM_Auth))
         _proxy_Reporter.start()
     except Exception as Err:
         _hLogger.critical("Failed to Start proxyReporter : %s ", str(Err))
         _hLogger.exception(sys.exc_info())
     else:
-        _hLogger.info("proxyReporter Start : Successful")
+        proxyReporterPID = str(_proxy_Reporter._process.ident) + '\n'
+        _hLogger.info("proxyReporter Start : Successful, with PID : {}".format(proxyReporterPID))
 
+    try:
+        with open(_HERMES_PIDS_FILE, "a") as pidsFH:
+            pidsFH.write(proxyReporterPID)
+    except Exception as Err:
+        _hLogger.critical("Failed to write proxyReporter PID : {}".format(Err))
+    else:
+        _hLogger.info("proxyReporter PID recorded")
+
+
+    _HERMES_EXECUTION_STATUS["PROXY_REPORTER_INIT"] = True
 
     from lib.driver.proxyMonitor import proxyMonitor
     try:
@@ -330,15 +368,26 @@ if (_HERMES_MODE == 'Driver'):
         proxyMonitor.register('opQ', callable=lambda : testCaseOutputDelta['proxyMonitor'])
         proxyMonitor.register('ipQNotif', callable=lambda : testCaseInputDeltaNotif['proxyMonitor'])
         proxyMonitor.register('opQNotif', callable=lambda : testCaseOutputDeltaNotif['proxyMonitor'])
-        #_hLogger.info("Starting proxyMonitor : {} / {}".format(_proxy_CM_Port, _proxy_CM_Auth))
         _proxy_Monitor = proxyMonitor(address=('', int(configP.get('MONITOR_PROXY', 'PORT'))), authkey=str(_proxy_CM_Auth))
         _proxy_Monitor.start()
     except Exception as Err:
         _hLogger.critical("Failed to Start proxyMonitor : %s ", str(Err))
         _hLogger.exception(sys.exc_info())
     else:
-        _hLogger.info("proxyMonitor Start : Successful")
+        proxyMonitorPID = str(_proxy_Monitor._process.ident) + '\n'
+        _hLogger.info("proxyMonitor Start : Successful, with PID : {}".format(proxyMonitorPID))
 
+
+    try:
+        with open(_HERMES_PIDS_FILE, "a") as pidsFH:
+            pidsFH.write(proxyMonitorPID)
+    except Exception as Err:
+        _hLogger.critical("Failed to write proxyMonitor PID : {}".format(Err))
+    else:
+        _hLogger.info("proxyMonitor PID recorded")
+
+
+    _HERMES_EXECUTION_STATUS["PROXY_MONITOR_INIT"] = True
 
     _hLogger.debug("Count:inputQ:{}".format(TestCaseQueueDict['TestCaseInputQueue'].qsize()))
 
@@ -354,18 +403,28 @@ if (_HERMES_MODE == 'Driver'):
 
 
     _Driver_Proc_List.append(
-        testConfigMan(_HERMES_CONFIG_FILE, _TEST_RUN_ID, 'ConfigMan', testInputQueueDict, testOutputQueueDict, testCaseQueueEvent, sigInitDriver, sigCupDriver, sigExtConfigMan))
+        testConfigMan(_HERMES_CONFIG_FILE, _TEST_RUN_ID, 'ConfigMan', testInputQueueDict, testOutputQueueDict, testCaseQueueEvent, sigInitDriver, sigCupDriver, sigExtConfigMan, _LOG_LEVEL, _HERMES_PIDS_FILE))
     _Driver_Proc_List.append(
-        testLogger(_HERMES_CONFIG_FILE, _TEST_RUN_ID, 'Logger', testInputQueueDict, testOutputQueueDict, testCaseQueueEvent, sigInitDriver, sigCupDriver, sigExtLogger))
+        testLogger(_HERMES_CONFIG_FILE, _TEST_RUN_ID, 'Logger', testInputQueueDict, testOutputQueueDict, testCaseQueueEvent, sigInitDriver, sigCupDriver, sigExtLogger, _LOG_LEVEL, _HERMES_PIDS_FILE))
     _Driver_Proc_List.append(
-        testMonitor(_HERMES_CONFIG_FILE, _TEST_RUN_ID, 'Monitor', testInputQueueDict, testOutputQueueDict, testCaseQueueEvent, sigInitDriver, sigCupDriver, sigExtMonitor))
+        testMonitor(_HERMES_CONFIG_FILE, _TEST_RUN_ID, 'Monitor', testInputQueueDict, testOutputQueueDict, testCaseQueueEvent, sigInitDriver, sigCupDriver, sigExtMonitor, _LOG_LEVEL, _HERMES_PIDS_FILE))
     _Driver_Proc_List.append(
-        testReporter(_HERMES_CONFIG_FILE, _TEST_RUN_ID, 'Reporter', testInputQueueDict, testOutputQueueDict, testCaseQueueEvent, sigInitDriver, sigCupDriver, sigExtReporter))
+        testReporter(_HERMES_CONFIG_FILE, _TEST_RUN_ID, 'Reporter', testInputQueueDict, testOutputQueueDict, testCaseQueueEvent, sigInitDriver, sigCupDriver, sigExtReporter, _LOG_LEVEL, _HERMES_PIDS_FILE))
 
     # Start All Processes, except Driver
     try:
         for _Proc in _Driver_Proc_List:
             _Proc.start()
+            if isinstance(_Proc, testConfigMan):
+                _HERMES_EXECUTION_STATUS["TEST_CONFIGMAN_INIT"] = True
+            elif isinstance(_Proc, testLogger):
+                _HERMES_EXECUTION_STATUS["TEST_LOGGER_INIT"] = True
+            elif isinstance(_Proc, testMonitor):
+                _HERMES_EXECUTION_STATUS["TEST_MONITOR_INIT"] = True
+            elif isinstance(_Proc, testReporter):
+                _HERMES_EXECUTION_STATUS["TEST_REPORTER_INIT"] = True
+            else:
+                pass
     except Exception as Err:
         _hLogger.critical("Failed to start Driver : %s ", str(Err))
         _hLogger.exception(sys.exc_info())
@@ -384,9 +443,10 @@ if (_HERMES_MODE == 'Driver'):
 
 
     # Starting Driver
-    Driver = testDriver(_HERMES_CONFIG_FILE, _TEST_RUN_ID, 'Driver', TestCaseQueueDict, testInputQueueDict, testOutputQueueDict, testCaseQueueEvent, sigInitDriver, sigCupDriver)
+    Driver = testDriver(_HERMES_CONFIG_FILE, _TEST_RUN_ID, 'Driver', TestCaseQueueDict, testInputQueueDict, testOutputQueueDict, testCaseQueueEvent, sigInitDriver, sigCupDriver, _LOG_LEVEL, _HERMES_PIDS_FILE)
     Driver.start()
     _hLogger.info("Started Driver!")
+    _HERMES_EXECUTION_STATUS["DRIVER_INIT"] = True
 
 
     # Wait for all Processes to Finish
@@ -484,6 +544,7 @@ elif (_HERMES_MODE == 'ConfigMan'):
         sys.exit(1)
     else:
         pass
+        _HERMES_EXECUTION_STATUS["CONFIGMAN_INIT"] = True
 
     # Shared Parameters
     _sigEx = _client_ConfigMan.sigExt()
@@ -498,6 +559,16 @@ elif (_HERMES_MODE == 'ConfigMan'):
     _hLogger.info("Notified proxyConfigMan for client invocation in ConfigMan(hermesNode)")
 
 
+    # write HermesNode pid
+    try:
+        with open(_HERMES_PIDS_FILE, "a") as pidsFH:
+            pidsFH.write(str(os.getpid()) + '\n')
+    except Exception as Err:
+        _hLogger.critical("Failed to writer HermesNode PID : {}".format(Err))
+    else:
+        _hLogger.info("Hermes Node PID write : SUCCESS")
+
+    _HERMES_EXECUTION_STATUS["CONFIGMAN_PROXY_INIT"] = True
     # Process Chunks One at a Time
     while True:
         _ipNotif.acquire()
@@ -528,7 +599,7 @@ elif (_HERMES_MODE == 'ConfigMan'):
             _hLogger.info("configMan got the Chunk : {} ".format(_deltaConfigMan))
 
             # For each chunk invoke a ThreadObject
-            _deltaResultConfigMan = hUtility.threadLauncher(configP, _TEST_RUN_ID, _deltaConfigMan, _LOG_DIR)
+            _deltaResultConfigMan = hUtility.threadLauncher(configP, _TEST_RUN_ID, _deltaConfigMan, _LOG_DIR, _LOG_LEVEL)
             _outputQ.put(_deltaResultConfigMan)
 
             try:
@@ -583,6 +654,7 @@ elif (_HERMES_MODE == 'Logger'):
     else:
         pass
 
+
     # Shared Parameters
     _sigEx = _client_Logger.sigExt()
     _inputQ = _client_Logger.ipQ()
@@ -595,7 +667,16 @@ elif (_HERMES_MODE == 'Logger'):
     _sigEx.set()
     _hLogger.info("Notified proxyLogger for client invocation in Logger(hermesNode)")
 
+    # write HermesNode pid
+    try:
+        with open(_HERMES_PIDS_FILE, "a") as pidsFH:
+            pidsFH.write(str(os.getpid()) + '\n')
+    except Exception as Err:
+        _hLogger.critical("Failed to writer HermesNode PID : {}".format(Err))
+    else:
+        _hLogger.info("Hermes Node PID write : SUCCESS")
 
+    _HERMES_EXECUTION_STATUS["LOGGER_PROXY_INIT"] = True
     # Process Chunks One at a Time
     while True:
         _ipNotif.acquire()
@@ -625,7 +706,7 @@ elif (_HERMES_MODE == 'Logger'):
             _hLogger.info("Logger got the Chunk : {} ".format(_deltaLogger))
             # Completed work with Chunk
             #
-            _deltaResultLogger = hUtility.threadLauncher(configP, _TEST_RUN_ID, _deltaLogger, _LOG_DIR)
+            _deltaResultLogger = hUtility.threadLauncher(configP, _TEST_RUN_ID, _deltaLogger, _LOG_DIR, _LOG_LEVEL)
             _outputQ.put(_deltaResultLogger)
 
             try:
@@ -692,6 +773,16 @@ elif (_HERMES_MODE == 'Monitor'):
     _sigEx.set()
     _hLogger.info("Notified proxyMonitor for client invocation in Monitor(hermesNode)")
 
+    # write HermesNode pid
+    try:
+        with open(_HERMES_PIDS_FILE, "a") as pidsFH:
+            pidsFH.write(str(os.getpid()) + '\n')
+    except Exception as Err:
+        _hLogger.critical("Failed to writer HermesNode PID : {}".format(Err))
+    else:
+        _hLogger.info("Hermes Node PID write : SUCCESS")
+
+    _HERMES_EXECUTION_STATUS["MONITOR_PROXY_INIT"] = True
     # Process Chunks One at a Time
     while True:
         _ipNotif.acquire()
@@ -722,7 +813,7 @@ elif (_HERMES_MODE == 'Monitor'):
             _hLogger.info("Monitor got the Chunk : {} ".format(_deltaMonitor))
 
             # For each chunk invoke a ThreadObject
-            _deltaResultMonitor = hUtility.threadLauncher(configP, _TEST_RUN_ID, _deltaMonitor, _LOG_DIR)
+            _deltaResultMonitor = hUtility.threadLauncher(configP, _TEST_RUN_ID, _deltaMonitor, _LOG_DIR, _LOG_LEVEL)
             _outputQ.put(_deltaResultMonitor)
 
             try:
@@ -789,7 +880,17 @@ elif (_HERMES_MODE == 'Reporter'):
     _sigEx.set()
     _hLogger.info("Notified proxyLogger for client invocation in Reporter(hermesNode)")
 
+    # write HermesNode pid
+    try:
+        with open(_HERMES_PIDS_FILE, "a") as pidsFH:
+            pidsFH.write(str(os.getpid()) + '\n')
+    except Exception as Err:
+        _hLogger.critical("Failed to writer HermesNode PID : {}".format(Err))
+    else:
+        _hLogger.info("Hermes Node PID write : SUCCESS")
 
+
+    _HERMES_EXECUTION_STATUS["REPORTER_PROXY_INI"] = True
     # Process Chunks One at a Time
     while True:
         _ipNotif.acquire()
@@ -820,7 +921,7 @@ elif (_HERMES_MODE == 'Reporter'):
             #Parse chunks from this Delta and invoke worker threads accordingly
             _hLogger.info("Logger got the Chunk : {} ".format(_deltaReporter))
             # For each chunk invoke a ThreadObject
-            _deltaResultReporter = hUtility.threadLauncher(configP, _TEST_RUN_ID, _deltaReporter, _LOG_DIR)
+            _deltaResultReporter = hUtility.threadLauncher(configP, _TEST_RUN_ID, _deltaReporter, _LOG_DIR, _LOG_LEVEL)
             _outputQ.put(_deltaResultReporter)
 
             try:
